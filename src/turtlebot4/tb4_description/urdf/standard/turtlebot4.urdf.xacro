@@ -142,5 +142,12 @@
   <xacro:oakd model="pro" parent_link="oakd_camera_bracket">
     <origin xyz="${oakd_pro_x_offset} ${oakd_pro_y_offset} ${oakd_pro_z_offset}"/>
   </xacro:oakd>
-
+  <plugin name="ground_truth" filename="libgazebo_ros_p3d.so">
+  <alwaysOn>true</alwaysOn>
+  <updateRate>50.0</updateRate>
+  <bodyName>base_link</bodyName>
+  <frameName>odom</frameName>
+  <topicName>/ground_truth</topicName>
+  <gaussianNoise>0.0</gaussianNoise>
+</plugin>
 </robot>

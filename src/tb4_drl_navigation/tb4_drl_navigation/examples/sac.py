@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import gymnasium as gym
 import numpy as np
-
+np.float = float
 import rclpy
 from stable_baselines3 import SAC
 from stable_baselines3.common.callbacks import (
@@ -32,11 +32,11 @@ class EnvConfig:
     obstacle_clearance: float = 2.0
     min_separation: float = 1.5
     goal_sampling_bias: str = 'close'
-    num_bins: int = 20
-    goal_threshold: float = 0.35
-    collision_threshold: float = 0.4
+    num_bins: int = 60
+    goal_threshold: float = 0.45
+    collision_threshold: float = 0.3
     time_delta: float = 0.1
-    shuffle_on_reset: bool = True
+    shuffle_on_reset: bool = False
 
     map_path: Optional[Path] = None
     yaml_path: Optional[Path] = None
@@ -52,16 +52,21 @@ class SACConfig:
     gamma: float = 0.99
     tau: float = 0.005
     target_update_interval: int = 1
-    learning_rate: float = 3e-4
-    train_freq: Tuple[int, str] = (1, 'step')
-    gradient_steps: int = 1
-
+    learning_rate: float = 1e-4
+    train_freq: Tuple[int, str] = (500, 'step')
+    gradient_steps: int = 50
+    ent_coef: str = 'auto_0.1'
+    
     # Network
     policy_kwargs: Dict[str, Any] = field(
         default_factory=lambda: {
             'net_arch': {'pi': [512, 512, 256], 'qf': [1024, 1024, 512]},
             'activation_fn': nn.ReLU,
             'optimizer_class': torch.optim.Adam,
+            'normalize_images': False,
+            'log_std_init': -2,  # Encourage low initial entropy
+
+            
         }
     )
 

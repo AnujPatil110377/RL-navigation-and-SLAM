@@ -1,0 +1,1 @@
+/home/robotics/ros2_ws/gym-turtlebot/src/turtlebot4/build/tb4_gz_sim/ament_cmake_core/tb4_gz_simConfig-version.cmake

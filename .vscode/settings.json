@@ -72,5 +72,5 @@
         ".devcontainer/devcontainer.json"
     ],
     "ament-task-provider.envSetup": "source /opt/ros/jazzy/setup.bash",
-    "cmake.sourceDirectory": "/home/ahmed/ros2_ws/tb4_social_navigation/src/turtlebot4/tb4_description",
+    "cmake.sourceDirectory": "/home/robotics/ros2_ws/gym-turtlebot/src/turtlebot4/tb4_description",
 }
