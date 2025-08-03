@@ -32,6 +32,25 @@ from transforms3d.euler import (
 )
 
 class Turtlebot4Env(gym.Env):
+    def _get_waypoint_reward(self, current_pos, waypoints, last_waypoint_idx):
+        """
+        Returns a reward if the robot passes a new waypoint.
+        Args:
+            current_pos: np.array([x, y])
+            waypoints: list of (x, y) tuples
+            last_waypoint_idx: int, last reached waypoint index
+        Returns:
+            reward: float
+            new_idx: int, updated last waypoint index
+        """
+        reward = 0.0
+        new_idx = last_waypoint_idx
+        if waypoints and last_waypoint_idx + 1 < len(waypoints):
+            next_wp = np.array(waypoints[last_waypoint_idx + 1])
+            if np.linalg.norm(current_pos - next_wp) < 0.4:  # 0.4m threshold
+                reward = 10.0
+                new_idx = last_waypoint_idx + 1
+        return reward, new_idx
     """
     Enhanced Gymnasium environment for a ROS2/Gazebo Turtlebot4 navigation task with
     full research paper implementation including:
@@ -261,9 +280,9 @@ class Turtlebot4Env(gym.Env):
             'min_ranges': spaces.Box(
                 low=range_min, high=range_max, shape=(self.num_bins,), dtype=np.float32
             ),
-            'min_ranges_angle': spaces.Box(
-                low=angle_min, high=angle_max, shape=(self.num_bins,), dtype=np.float32
-            ),
+            # 'min_ranges_angle': spaces.Box(
+            #     low=angle_min, high=angle_max, shape=(self.num_bins,), dtype=np.float32
+            # ),
             'dist_to_goal': spaces.Box(low=0.0, high=100.0, shape=(1,), dtype=np.float32),
             'orient_to_goal': spaces.Box(low=-math.pi, high=math.pi, shape=(1,), dtype=np.float32),
             'action': spaces.Box(
@@ -316,14 +335,14 @@ class Turtlebot4Env(gym.Env):
             cp_list.append((cp, obs_pos, obs_vel))
 
             # Debug output matching paper's format, handle None values
-            pos_str = f"[{obs_pos[0]:.2f}, {obs_pos[1]:.2f}]" if obs_pos is not None else "[N/A, N/A]"
-            ttc_str = f"{ttc:.3f}" if ttc is not None else "N/A"
-            pc_ttc_str = f"{pc_ttc:.3f}" if pc_ttc is not None else "N/A"
-            pc_dto_str = f"{pc_dto:.3f}" if pc_dto is not None else "N/A"
-            cp_str = f"{cp:.3f}" if cp is not None else "N/A"
-            rel_vel_str = f"[{rel_vel[0]:.2f}, {rel_vel[1]:.2f}]"
-            print(f"[CP] Obs at {pos_str}: TTC={ttc_str}s, Pc-ttc={pc_ttc_str}, Pc-dto={pc_dto_str}, CP={cp_str}, RelVel={rel_vel_str}")
-        
+            # pos_str = f"[{obs_pos[0]:.2f}, {obs_pos[1]:.2f}]" if obs_pos is not None else "[N/A, N/A]"
+            # ttc_str = f"{ttc:.3f}" if ttc is not None else "N/A"
+            # pc_ttc_str = f"{pc_ttc:.3f}" if pc_ttc is not None else "N/A"
+            # pc_dto_str = f"{pc_dto:.3f}" if pc_dto is not None else "N/A"
+            # cp_str = f"{cp:.3f}" if cp is not None else "N/A"
+            # rel_vel_str = f"[{rel_vel[0]:.2f}, {rel_vel[1]:.2f}]"
+            # print(f"[CP] Obs at {pos_str}: TTC={ttc_str}s, Pc-ttc={pc_ttc_str}, Pc-dto={pc_dto_str}, CP={cp_str}, RelVel={rel_vel_str}")
+
         # Sort by collision probability (descending) and take top K
         cp_list.sort(key=lambda x: x[0], reverse=True)
         
@@ -401,7 +420,7 @@ class Turtlebot4Env(gym.Env):
 
         obs = {
             'min_ranges': np.array(min_ranges, dtype=np.float32),
-            'min_ranges_angle': np.array(min_ranges_angle, dtype=np.float32),
+            # 'min_ranges_angle': np.array(min_ranges_angle, dtype=np.float32),
             'dist_to_goal': np.array([dist_to_goal], dtype=np.float32),
             'orient_to_goal': np.array([orient_to_goal], dtype=np.float32),
             'action': self._last_action.astype(np.float32),
@@ -554,12 +573,12 @@ class Turtlebot4Env(gym.Env):
         goal_reached = self._goal_reached(dist_to_goal=observation['dist_to_goal'].item())
         collision = self._collision(min_ranges=observation['min_ranges'])
 
-        # Check for timeout penalty (treat as collision after 500 steps)
+        # Check for timeout penalty (treat as special penalty after 500 steps)
         timeout_collision = False
         if self._episode_step_count >= 500:
             timeout_collision = True
             collision = True
-            self.sensors.get_logger().info(f'Episode timeout at step {self._episode_step_count} - treating as collision!')
+            self.sensors.get_logger().info(f'Episode timeout at step {self._episode_step_count} - applying timeout penalty!')
 
         # Log termination events immediately when they occur
         if goal_reached:
@@ -568,12 +587,17 @@ class Turtlebot4Env(gym.Env):
             self.sensors.get_logger().info('Collision detected!')
 
         # Calculate reward using new reward function signature
-        reward = self._get_reward(
-            action=action,
-            min_ranges=observation['min_ranges'],
-            dist_to_goal=observation['dist_to_goal'].item(),
-            orient_to_goal=observation['orient_to_goal'].item()
-        )
+        if timeout_collision:
+            reward = -50.0
+        else:
+            reward = self._get_reward(
+                action=action,
+                min_ranges=observation['min_ranges'],
+                dist_to_goal=observation['dist_to_goal'].item(),
+                orient_to_goal=observation['orient_to_goal'].item()
+            )
+        # Print reward per step for debugging
+        print(f"Step {self._episode_step_count}: Reward = {reward:.3f}")
 
         # If collision occurs within first 8 steps, apply zero penalty (exploration phase)
         early_collision = False
@@ -582,25 +606,22 @@ class Turtlebot4Env(gym.Env):
             early_collision = True
             self.sensors.get_logger().info(f'Early collision at step {self._episode_step_count} - zero penalty: {reward}')
 
-        # Log reward to terminal
-        print(f"Step {self._episode_step_count}: Reward = {reward:.3f}")
-
         # --- Print collision probabilities of tracked obstacles ---
-        if hasattr(self, 'tracked_circles') and self.tracked_circles:
-            print(f"Tracked {len(self.tracked_circles)} circle obstacles:")
-            # Get collision probabilities from observation
-            obs_k_data = self._compute_obs_k()
-            print(f"Top {self.k_obstacle_count} most dangerous obstacles:")
-            for i in range(self.k_obstacle_count):
-                if i * 5 + 4 < len(obs_k_data):
-                    x, y, rvx, rvy, cp = obs_k_data[i*5:(i+1)*5]
-                    if cp > 0.0: # Only show obstacles with non-zero CP
-                        print(f" {i+1}. CP: {cp:.3f}, Pos: [{x:.2f}, {y:.2f}], RelVel: [{rvx:.2f}, {rvy:.2f}]")
-        else:
-            print("No circle obstacles tracked from /obstacles topic.")
+        # if hasattr(self, 'tracked_circles') and self.tracked_circles:
+        #     print(f"Tracked {len(self.tracked_circles)} circle obstacles:")
+        #     # Get collision probabilities from observation
+        #     obs_k_data = self._compute_obs_k()
+        #     print(f"Top {self.k_obstacle_count} most dangerous obstacles:")
+        #     for i in range(self.k_obstacle_count):
+        #         if i * 5 + 4 < len(obs_k_data):
+        #             x, y, rvx, rvy, cp = obs_k_data[i*5:(i+1)*5]
+        #             if cp > 0.0: # Only show obstacles with non-zero CP
+        #                 print(f" {i+1}. CP: {cp:.3f}, Pos: [{x:.2f}, {y:.2f}], RelVel: [{rvx:.2f}, {rvy:.2f}]")
+        # else:
+        #     print("No circle obstacles tracked from /obstacles topic.")
 
-        # Update previous distance to goal for the next step's calculation
-        self._prev_dist_to_goal = observation['dist_to_goal'].item()
+        # Log reward to terminal
+        # print(f"Step {self._episode_step_count}: Reward = {reward:.3f}")
 
         # MDP
         truncated = False # Handled by TimeLimit wrapper in the SB3 setup
@@ -630,6 +651,10 @@ class Turtlebot4Env(gym.Env):
         if terminated:
             self._episode_step_count = 0
 
+        # Print per-step reward breakdown for debugging
+        print(f"Step {self._episode_step_count}: Reward = {reward:.3f}")
+        # Optionally, print more details (uncomment if needed):
+        # print(f"  Progress: {locals().get('progress_reward', 0):.3f}, Orientation: {locals().get('orientation_reward', 0):.3f}, Action: {locals().get('action_reward', 0):.3f}, Waypoint: {locals().get('waypoint_reward', 0):.3f}, Obstacle: {locals().get('obstacle_reward', 0):.3f}, Avoidance: {locals().get('avoidance_bonus', 0):.3f}, Stationary: {locals().get('stationary_penalty', 0):.3f}, Time: {locals().get('time_penalty', 0):.3f}")
         return observation, reward, terminated, truncated, info
 
     def reset(
@@ -684,18 +709,20 @@ class Turtlebot4Env(gym.Env):
                     self._original_obstacle_positions.append((0.0, 0.0, 0.01))
 
 
-        # === CUSTOM SPAWN LOGIC: robot and goal in opposite corners ===
-        map_corners = [(-4.0, -4.0), (4.0, 4.0)] # Example corners, adjust to your map size
+        # === CUSTOM SPAWN LOGIC: robot in lower left, goal at random top position ===
+        map_x_min, map_x_max = -4.0, 4.0  # Adjust to your map size
+        map_y_min, map_y_max = -4.0, 4.0
         if start_pos is None:
-            # Robot in one corner
-            start_xy = map_corners[0]
+            # Robot in lower left corner
+            start_xy = (map_x_min, map_y_min)
             start_yaw = 0.0
             start_pos = (*start_xy, start_yaw)
         if goal_pos is None:
-            # Goal in opposite corner
-            goal_xy = map_corners[1]
+            # Goal at random position along the top edge (y = map_y_max)
+            goal_x = np.random.uniform(map_x_min + 0.5, map_x_max - 0.5)
+            goal_y = map_y_max
             goal_yaw = 0.0
-            goal_pos = (*goal_xy, goal_yaw)
+            goal_pos = (goal_x, goal_y, goal_yaw)
 
         # === Generate obstacles with clearance from both robot and goal ===
         if self.shuffle_on_reset:
@@ -842,7 +869,7 @@ class Turtlebot4Env(gym.Env):
         progress_reward = 0.0
         if hasattr(self, '_prev_dist_to_goal'):
             progress = self._prev_dist_to_goal - dist_to_goal
-            progress_reward = np.clip(5.0 * progress, -0.5, 0.5)
+            progress_reward = np.clip(5.0 * progress, -1.2, 1.2)
 
         # === 2. ORIENTATION REWARD (stronger guidance) ===
         laser_factor= 0.5 if min_laser < 2.0 else 1.0
@@ -850,10 +877,16 @@ class Turtlebot4Env(gym.Env):
         orientation_reward = 0.5 * laser_factor * math.cos(orient_to_goal)
 
         # # === 3. SMOOTH ACTION REWARD ===
-        # linear_reward = 0.3 * action[0]
-        # angular_penalty = -0.1 * abs(action[1]) if abs(orient_to_goal) < 0.3 else 0.0
+        # linear_reward = 3 * action[0]
+        # angular_penalty = -1 * abs(action[1]) if abs(orient_to_goal) < 0.3 else 0.0
         # action_reward = linear_reward + angular_penalty
         action_reward = 0.0
+        # === WAYPOINT REWARD ===
+        waypoint_reward = 0.0
+        if hasattr(self, 'waypoints') and hasattr(self, '_last_waypoint_idx'):
+            wp_reward, new_idx = self._get_waypoint_reward(self._current_position, self.waypoints, self._last_waypoint_idx)
+            waypoint_reward = wp_reward
+            self._last_waypoint_idx = new_idx
 
         # === 4. OBSTACLE AVOIDANCE (multi-level) ===
         obstacle_reward = 0.0
@@ -863,9 +896,9 @@ class Turtlebot4Env(gym.Env):
 
         # === 5. DYNAMIC OBSTACLE AVOIDANCE ===
         avoidance_bonus = 0.0
-        if hasattr(self, '_prev_min_laser'):
-            if min_laser > self._prev_min_laser and min_laser < 2.0:
-                avoidance_bonus = 3
+        # if hasattr(self, '_prev_min_laser'):
+        #     if min_laser > self._prev_min_laser and min_laser < 2.0:
+        #         avoidance_bonus = 3
             
         self._prev_min_laser = min_laser
 
@@ -877,7 +910,7 @@ class Turtlebot4Env(gym.Env):
         #     escape_bonus += 0.3 * abs(action[1])
 
         # === 7. STATIONARY PENALTY ===
-        stationary_penalty = -1 if np.linalg.norm(action) < 0.05 else 0.0
+        stationary_penalty = -0.5 if np.linalg.norm(action[0]) < 0.1 else 0.0
 
         # === 8. TIME PENALTY (encourage efficiency) ===
         time_penalty = -0.5
@@ -887,6 +920,7 @@ class Turtlebot4Env(gym.Env):
             progress_reward +
             orientation_reward +
             action_reward +
+            waypoint_reward +
             obstacle_reward +
             avoidance_bonus +
             escape_bonus +
@@ -894,6 +928,10 @@ class Turtlebot4Env(gym.Env):
             time_penalty
         )
         return np.clip(reward, -5.0, 5.0)
+    def set_waypoints(self, waypoints):
+        """Set the list of waypoints for the environment."""
+        self.waypoints = waypoints
+        self._last_waypoint_idx = -1
 
     def _goal_reached(self, dist_to_goal: float) -> bool:
         """Check if final goal is reached (no waypoint logic)."""
@@ -921,9 +959,16 @@ def main():
 
     try:
         global_step = 0
+        num_episodes = 0
+        num_success = 0
+        num_collision = 0
+
         while True:
             obs, info = env.reset(options={'debug': True})
             done = False
+            episode_success = False
+            episode_collision = False
+
             while not done:
                 action = env.action_space.sample()
                 obs, reward, terminated, truncated, info = env.step(action)
@@ -934,21 +979,44 @@ def main():
                 min_ranges_angles = obs.get('min_ranges_angle', np.array([]))
                 obs_k = obs.get('obs_k', np.array([]))
 
-                print(f"Step {global_step}: Reward = {reward:.3f}")
-                print('orient_to_goal:', obs.get('orient_to_goal'), '\nInfo: ', info)
-                print('Min range:', np.min(min_ranges) if len(min_ranges) > 0 else 'N/A')
-                print('K-obstacle data shape:', obs_k.shape)
-                print('Social Safety Score:', info.get('social_safety_score', 'N/A'))
-                print('Ego Safety Score:', info.get('ego_safety_score', 'N/A'))
+                # print(f"Step {global_step}: Reward = {reward:.3f}")
+                # print('orient_to_goal:', obs.get('orient_to_goal'), '\nInfo: ', info)
+                # print('Min range:', np.min(min_ranges) if len(min_ranges) > 0 else 'N/A')
+                # print('K-obstacle data shape:', obs_k.shape)
+                # print('Social Safety Score:', info.get('social_safety_score', 'N/A'))
+                # print('Ego Safety Score:', info.get('ego_safety_score', 'N/A'))
 
-                if len(min_ranges) > 0:
-                    print('Min range angle:', min_ranges_angles[np.argmin(min_ranges)])
-                else:
-                    print('Min range angle: N/A')
+                # if len(min_ranges) > 0:
+                #     print('Min range angle:', min_ranges_angles[np.argmin(min_ranges)])
+                # else:
+                #     print('Min range angle: N/A')
 
-                if terminated:
-                    print("Episode ended (collision or goal). Resetting environment.")
-                    break
+                # if terminated:
+                #     # Check if goal was reached or collision occurred
+                #     if info.get('ego_safety_score', 1.0) == 1.0 and info.get('social_safety_score', 1.0) == 1.0:
+                #         # If both safety scores are perfect, likely a success
+                #         episode_success = True
+                #     if reward == -200.0 or info.get('timeout_collision', False):
+                #         episode_collision = True
+
+                #     print("Episode ended (collision or goal). Resetting environment.")
+                #     break
+
+            num_episodes += 1
+            if episode_success or info.get('goal_reached', False):
+                num_success += 1
+            if episode_collision:
+                num_collision += 1
+
+            # For demonstration, stop after 100 episodes
+            if num_episodes >= 100:
+                break
+
+        # Print accuracy at the end
+        accuracy = num_success / num_episodes if num_episodes > 0 else 0.0
+        print(f"\nEvaluation finished: {num_episodes} episodes")
+        print(f"Successes: {num_success}, Collisions: {num_collision}")
+        print(f"Accuracy (Success Rate): {accuracy*100:.2f}%")
 
     except KeyboardInterrupt:
         pass

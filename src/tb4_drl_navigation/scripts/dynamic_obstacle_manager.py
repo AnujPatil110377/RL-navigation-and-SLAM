@@ -31,7 +31,7 @@ class DynamicObstacleManager(Node):
         while not self.pose_cli.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('Waiting for /set_pose service...')
 
-        self.num = 12
+        self.num = 8
         self.names = [f'obstacle_{i}' for i in range(self.num)]
         self.positions = []
         self.velocities = []
