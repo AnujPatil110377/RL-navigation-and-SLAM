@@ -8,6 +8,11 @@
   A custom Gymnasium environment for deep reinforcement learning (DRL) with TurtleBot4 in ROS 2 & Gazebo, featuring robust navigation and advanced planners.
 </p>
 <p align="center">
+## Demonstration Video
+
+```markdown
+[![Demo Video](https://drive.google.com/file/d/1nxP_nftTVpdNu74930hxVFkkDXxcX2Zu/view?usp=sharing)
+```
 
 ## Overview
 
@@ -110,27 +115,6 @@ Follow the same steps as in the Docker section, but ensure all dependencies are 
 
 ---
 
-## Demonstration Video
 
-You can embed a demonstration video in your README using either Markdown or HTML:
 
-**Markdown (for YouTube):**
-```markdown
-[![Demo Video](https://img.youtube.com/vi/YOUR_VIDEO_ID/0.jpg)](https://www.youtube.com/watch?v=YOUR_VIDEO_ID)
-```
 
-**HTML (for inline video):**
-```html
-<p align="center">
-  <a href="https://www.youtube.com/watch?v=YOUR_VIDEO_ID">
-   <img src="https://img.youtube.com/vi/YOUR_VIDEO_ID/0.jpg" alt="Demo Video" width="60%"/>
-  </a>
-</p>
-```
-
-**Direct embed (HTML, may not work on all platforms):**
-```html
-<iframe width="560" height="315" src="https://www.youtube.com/embed/YOUR_VIDEO_ID" frameborder="0" allowfullscreen></iframe>
-```
-
-Replace `YOUR_VIDEO_ID` with your actual YouTube video ID.
